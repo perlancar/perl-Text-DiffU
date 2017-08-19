@@ -18,6 +18,7 @@ our %colors = (
 );
 
 $SPEC{diff_u} = {
+    v => 1.1,
     summary => 'Diff two sequences and print unified-style output',
     args => {
         seq1 => {
@@ -172,11 +173,17 @@ sub diff_u {
         );
     };
 
-    my $res = $args{hook_format_seq_header}->($args{seq1_name}, $args{seq2_name});
+    my $res = "";
+    my $seq_header_printed;
 
     my $code_add_uni_hunk = sub {
-        $res .= $args{hook_format_hunk_header}->(@_[0,1,2,3]);
-        $res .= $_[4];
+        my ($line1_start, $line2_start, $num_lines1, $num_lines2, $has_diff, $hunk_text) = @_;
+        return unless $has_diff;
+        $res .= $args{hook_format_seq_header}->(
+            $args{seq1_name}, $args{seq2_name}) unless $seq_header_printed++;
+        $res .= $args{hook_format_hunk_header}->(
+            $line1_start, $line2_start, $num_lines1, $num_lines2);
+        $res .= $hunk_text;
     };
 
     # to display unified-style hunks, we basically need to print unified-style
@@ -185,7 +192,7 @@ sub diff_u {
 
     my $diff = Algorithm::Diff->new($args{seq1}, $args{seq2});
     $diff->Base(1);
-    my @uni_hunk; # (line1_start, line2_start, num_lines1, num_lines2, hunk_text)
+    my @uni_hunk; # (line1_start, line2_start, num_lines1, num_lines2, has_diff?, hunk_text)
 
   HUNK:
     while ($diff->Next) {
@@ -195,14 +202,14 @@ sub diff_u {
                 if ($max1-$min1+1 > 2*$args{ctx}) {
                     # break the uni hunk because there are more than 2*ctx of
                     # same lines
-                    $uni_hunk[4] .= $args{hook_format_same_items}->(
+                    $uni_hunk[5] .= $args{hook_format_same_items}->(
                         [@{$args{seq1}}[$min1-1 .. $min1+$args{ctx}-1-1]]);
                     $uni_hunk[2] += $args{ctx};
                     $uni_hunk[3] += $args{ctx};
                     $code_add_uni_hunk->(@uni_hunk);
 
-                    @uni_hunk = ($max1-$args{ctx}+1, $max2-$args{ctx}+1, 0, 0, "");
-                    $uni_hunk[4] .= $args{hook_format_same_items}->(
+                    @uni_hunk = ($max1-$args{ctx}+1, $max2-$args{ctx}+1, 0, 0, 0, "");
+                    $uni_hunk[5] .= $args{hook_format_same_items}->(
                         [@{$args{seq1}}[$max1-$args{ctx} .. $max1-1]]);
                     $uni_hunk[2] += $args{ctx};
                     $uni_hunk[3] += $args{ctx};
@@ -216,7 +223,7 @@ sub diff_u {
                         $max = $min1+$args{ctx}-1 if $max > $min1+$args{ctx}-1;
                         $is_last_hunk++;
                     }
-                    $uni_hunk[4] .= $args{hook_format_same_items}->(
+                    $uni_hunk[5] .= $args{hook_format_same_items}->(
                         [@{$args{seq1}}[$min1-1 .. $max-1]]);
                     $uni_hunk[2] += ($max-$min1+1);
                     $uni_hunk[3] += ($max-$min1+1);
@@ -225,19 +232,18 @@ sub diff_u {
             } else {
                 my $line1_start = $max1-$args{ctx}+1; $line1_start = 1 if $line1_start < 1;
                 my $line2_start = $max2-$args{ctx}+1; $line2_start = 1 if $line2_start < 1;
-                @uni_hunk = ($line1_start, $line2_start, 0, 0, "");
-                $uni_hunk[4] .= $args{hook_format_same_line}->(
-                    [@{$args{seq1}}[$line1_start .. $max1]]);
-                for my $i ($line1_start .. $max1) {
-                    $uni_hunk[2] += ($max1-$line1_start+1);
-                    $uni_hunk[3] += ($max1-$line1_start+1);
-                }
+                @uni_hunk = ($line1_start, $line2_start, 0, 0, 0, "");
+                $uni_hunk[5] .= $args{hook_format_same_items}->(
+                    [@{$args{seq1}}[$line1_start-1 .. $max1-1]]);
+                $uni_hunk[2] += ($max1-$line1_start+1);
+                $uni_hunk[3] += ($max1-$line1_start+1);
             }
         } else {
             unless (@uni_hunk) {
-                @uni_hunk = ($min1, $min2, 0, 0, "");
+                @uni_hunk = ($min1, $min2, 0, 0, 0, "");
             }
-            $uni_hunk[4] .= $args{hook_format_diff_items}->(
+            $uni_hunk[4]++;
+            $uni_hunk[5] .= $args{hook_format_diff_items}->(
                 [@{$args{seq1}}[$min1-1 .. $max1-1]],
                 [@{$args{seq2}}[$min2-1 .. $max2-1]],
             );
