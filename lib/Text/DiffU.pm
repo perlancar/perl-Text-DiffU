@@ -40,7 +40,7 @@ $SPEC{diff_u} = {
             default => '(seq2)',
         },
         ctx => {
-            schema => 'nonnegint*',
+            schema => 'uint*',
             default => 3,
         },
         hook_format_seq_header => {
